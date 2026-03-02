@@ -40,6 +40,15 @@ export default function Home() {
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
 
+  // Refs to avoid stale closures in event listeners
+  const messagesRef = useRef(messages);
+  const levelRef = useRef(level);
+  const themeRef = useRef(theme);
+
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+  useEffect(() => { levelRef.current = level; }, [level]);
+  useEffect(() => { themeRef.current = theme; }, [theme]);
+
   useEffect(() => {
     setMounted(true);
     if (typeof window !== 'undefined') {
@@ -57,6 +66,14 @@ export default function Home() {
 
           if (event.results[current].isFinal) {
             handleVoiceInput(transcriptValue);
+          }
+        };
+
+        recognitionRef.current.onerror = (event: any) => {
+          console.error("Speech Recognition Error:", event.error);
+          setIsListening(false);
+          if (event.error === 'not-allowed') {
+            alert("Microphone access denied. Please enable it in your browser settings.");
           }
         };
 
@@ -104,9 +121,9 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [...messages, userMessage],
-          level: level,
-          theme: theme
+          messages: [...messagesRef.current, userMessage],
+          level: levelRef.current,
+          theme: themeRef.current
         }),
       });
       const data = await res.json();
@@ -153,6 +170,14 @@ export default function Home() {
 
     const welcomeText = `Hello! We've started your ${selectedLevel} session. Today's theme is: ${randomTheme}. I've prepared some helpful vocabulary and phrases for you on the screen. Ready? Let's start!`;
     setMessages([{ role: 'assistant', content: welcomeText }]);
+
+    // Unlock audio for mobile (iOS/Android)
+    if (synthRef.current) {
+      const unlockUtterance = new SpeechSynthesisUtterance(' ');
+      unlockUtterance.volume = 0;
+      synthRef.current.speak(unlockUtterance);
+    }
+
     speak(welcomeText);
     setIsLoading(false);
   };
