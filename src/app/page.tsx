@@ -15,6 +15,12 @@ export default function Home() {
     { role: 'assistant', content: "Hello! I'm your AI English Teacher. Are you ready for our 30-minute voice session? Please choose your level to start the call." }
   ]);
   const [status, setStatus] = useState<'idle' | 'listening' | 'processing' | 'speaking'>('idle');
+  const [timeLeft, setTimeLeft] = useState(1800);
+  const [isActive, setIsActive] = useState(false);
+  const [level, setLevel] = useState<'Beginner' | 'Intermediate' | 'Advanced' | null>(null);
+  const [theme, setTheme] = useState<string>('');
+  const [mounted, setMounted] = useState(false);
+  const [transcript, setTranscript] = useState('');
   const [materials, setMaterials] = useState<{ vocabulary: string[], phrases: string[] } | null>(null);
 
   const pendingTranscriptRef = useRef<string>('');
@@ -101,7 +107,7 @@ export default function Home() {
     if (!synthRef.current) return;
 
     // Stop recognition before speaking to prevent iOS conflicts
-    if (isListening) {
+    if (status === 'listening') {
       recognitionRef.current?.stop();
     }
 
@@ -109,16 +115,24 @@ export default function Home() {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'en-US';
     utterance.rate = levelRef.current === 'Beginner' ? 0.8 : levelRef.current === 'Intermediate' ? 1.0 : 1.1;
+
+    utterance.onend = () => {
+      setStatus('idle');
+    };
+
     synthRef.current.speak(utterance);
   };
 
   const handleVoiceInput = async (text: string) => {
-    if (!text.trim() || isLoading) return;
+    if (!text.trim() || status !== 'idle') {
+      if (!text.trim()) setStatus('idle');
+      return;
+    }
 
     const userMessage = { role: 'user', content: text };
     setMessages((prev) => [...prev, userMessage]);
     setTranscript('');
-    setIsLoading(true);
+    setStatus('processing');
 
     try {
       const res = await fetch('/api/chat', {
@@ -131,13 +145,11 @@ export default function Home() {
         }),
       });
       const data = await res.json();
-      setMessages((prev) => [...prev, { role: 'assistant', content: data.content }]);
-      speak(data.content);
+      setMessages((prev) => [...prev, { role: 'assistant', content: data.content || '' }]);
+      speak(data.content || '');
     } catch (error) {
       console.error(error);
-      speak("I'm sorry, I'm having trouble connecting. Could you say that again?");
-    } finally {
-      setIsLoading(false);
+      speak("I'm sorry, I encountered an error. Please try again.");
     }
   };
 
