@@ -1,5 +1,3 @@
-# ai-english-coach
-
 # AI English Voice Coach 👨‍🏫🎤
 
 An immersive, voice-first English conversation platform designed to simulate home-based language tutoring sessions. Powered by advanced AI to help students build confidence and fluency through real-time role-playing.
@@ -41,3 +39,15 @@ An immersive, voice-first English conversation platform designed to simulate hom
 4. **Run the development server**:
    ```bash
    npm run dev
+   ```
+   Open [http://localhost:3000](http://localhost:3000) to start your session.
+
+## 🌐 Deployment
+
+This project is optimized for deployment on [Vercel](https://vercel.com).
+1. Connect your GitHub repository to Vercel.
+2. Add `OPENROUTER_API_KEY` to the environment variables in Vercel settings.
+3. Deploy!
+
+---
+*Created for the next generation of English learners.*
