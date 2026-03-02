@@ -14,15 +14,10 @@ export default function Home() {
   const [messages, setMessages] = useState<{ role: string; content: string }[]>([
     { role: 'assistant', content: "Hello! I'm your AI English Teacher. Are you ready for our 30-minute voice session? Please choose your level to start the call." }
   ]);
-  const [isListening, setIsListening] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(1800);
-  const [isActive, setIsActive] = useState(false);
-  const [level, setLevel] = useState<'Beginner' | 'Intermediate' | 'Advanced' | null>(null);
-  const [theme, setTheme] = useState<string>('');
-  const [mounted, setMounted] = useState(false);
-  const [transcript, setTranscript] = useState('');
+  const [status, setStatus] = useState<'idle' | 'listening' | 'processing' | 'speaking'>('idle');
   const [materials, setMaterials] = useState<{ vocabulary: string[], phrases: string[] } | null>(null);
+
+  const pendingTranscriptRef = useRef<string>('');
 
   const themes = [
     "Coffee Shop Ordering",
@@ -65,20 +60,24 @@ export default function Home() {
           setTranscript(transcriptValue);
 
           if (event.results[current].isFinal) {
-            handleVoiceInput(transcriptValue);
+            pendingTranscriptRef.current = transcriptValue;
+            recognitionRef.current.stop(); // This triggers onend
           }
         };
 
         recognitionRef.current.onerror = (event: any) => {
           console.error("Speech Recognition Error:", event.error);
-          setIsListening(false);
-          if (event.error === 'not-allowed') {
-            alert("Microphone access denied. Please enable it in your browser settings.");
-          }
+          setStatus('idle');
         };
 
         recognitionRef.current.onend = () => {
-          setIsListening(false);
+          if (pendingTranscriptRef.current) {
+            const text = pendingTranscriptRef.current;
+            pendingTranscriptRef.current = '';
+            handleVoiceInput(text);
+          } else {
+            setStatus('idle');
+          }
         };
       }
       synthRef.current = window.speechSynthesis;
@@ -143,28 +142,30 @@ export default function Home() {
   };
 
   const toggleListening = () => {
-    if (isListening) {
+    if (status === 'listening') {
       recognitionRef.current?.stop();
-      setIsListening(false);
-    } else {
+      setStatus('idle');
+    } else if (status === 'idle') {
       if (!recognitionRef.current) {
-        alert("Speech Recognition is not supported in this browser. Please use Safari on iOS.");
+        alert("Speech Recognition is not supported. Please use Safari on iOS.");
         return;
       }
       setTranscript('');
+      pendingTranscriptRef.current = '';
       try {
         recognitionRef.current.start();
-        setIsListening(true);
+        setStatus('listening');
       } catch (e) {
-        console.error("Failed to start recognition:", e);
+        console.error(e);
+        setStatus('idle');
       }
     }
   };
 
   const startLesson = async (selectedLevel: 'Beginner' | 'Intermediate' | 'Advanced') => {
-    // 1. IMMEDIATE SYNCHRONOUS AUDIO UNLOCK (CRITICAL FOR iOS SAFARI)
+    // 1. IMMEDIATE SYNCHRONOUS AUDIO UNLOCK
     if (synthRef.current) {
-      const unlockUtterance = new SpeechSynthesisUtterance('Starting');
+      const unlockUtterance = new SpeechSynthesisUtterance(' ');
       unlockUtterance.volume = 0;
       synthRef.current.speak(unlockUtterance);
     }
@@ -173,9 +174,8 @@ export default function Home() {
     setLevel(selectedLevel);
     setTheme(randomTheme);
     setIsActive(true);
-    setIsLoading(true);
+    setStatus('processing');
 
-    // Fetch Materials
     try {
       const matRes = await fetch('/api/materials', {
         method: 'POST',
@@ -185,14 +185,12 @@ export default function Home() {
       const matData = await matRes.json();
       setMaterials(matData);
     } catch (e) {
-      console.error("Failed to load materials");
+      console.error(e);
     }
 
-    const welcomeText = `Hello! We've started your ${selectedLevel} session. Today's theme is: ${randomTheme}. I've prepared some helpful vocabulary and phrases for you on the screen. Ready? Let's start!`;
+    const welcomeText = `Hello! I've prepared some helpful materials for this ${selectedLevel} session. Today's theme is ${randomTheme}. Ready?`;
     setMessages([{ role: 'assistant', content: welcomeText }]);
-
     speak(welcomeText);
-    setIsLoading(false);
   };
 
   const formatTime = (seconds: number) => {
@@ -230,9 +228,9 @@ export default function Home() {
         <div className="w-full max-w-md flex flex-col items-center gap-8">
           {/* Avatar / Visualizer */}
           <div className="relative w-48 h-48 flex items-center justify-center">
-            <div className={`absolute w-full h-full rounded-full bg-indigo-500/20 animate-ping ${isLoading ? 'block' : 'hidden'}`} />
-            <div className={`absolute w-full h-full rounded-full border-4 border-indigo-500/30 ${isListening ? 'animate-pulse scale-110' : ''}`} />
-            <div className="w-32 h-32 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-500 flex items-center justify-center shadow-2xl shadow-indigo-500/20">
+            <div className={`absolute w-full h-full rounded-full bg-indigo-500/20 animate-ping ${status === 'processing' || status === 'speaking' ? 'block' : 'hidden'}`} />
+            <div className={`absolute w-full h-full rounded-full border-4 border-indigo-500/30 ${status === 'listening' ? 'animate-pulse scale-110' : ''}`} />
+            <div className={`w-32 h-32 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-500 flex items-center justify-center shadow-2xl shadow-indigo-500/20 ${status === 'speaking' ? 'scale-105' : ''}`}>
               <span className="text-4xl">👨‍🏫</span>
             </div>
           </div>
@@ -240,7 +238,10 @@ export default function Home() {
           <div className="text-center space-y-2 px-4">
             <h3 className="text-xl font-medium text-indigo-400">{level} Level</h3>
             <p className="text-slate-300 text-lg leading-relaxed min-h-[4rem]">
-              {isLoading ? "Teacher is thinking..." : (isListening ? (transcript || "Listening...") : "Tap the mic to speak")}
+              {status === 'processing' ? "Teacher is thinking..." :
+                status === 'speaking' ? "Teacher is speaking..." :
+                  status === 'listening' ? (transcript || "Listening...") :
+                    "Tap the mic to speak"}
             </p>
           </div>
 
@@ -270,13 +271,13 @@ export default function Home() {
             <div className="flex flex-col items-center gap-6 w-full px-8">
               <button
                 onClick={toggleListening}
-                disabled={isLoading}
-                className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-xl ${isListening
+                disabled={status === 'processing' || status === 'speaking'}
+                className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-xl ${status === 'listening'
                   ? 'bg-red-500 hover:bg-red-600 scale-110 shadow-red-500/40'
                   : 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/40'
                   } disabled:opacity-50`}
               >
-                {isListening ? (
+                {status === 'listening' ? (
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H10a1 1 0 01-1-1v-4z" />
@@ -295,7 +296,7 @@ export default function Home() {
 
             {/* Real-time Subtitles (Small) */}
             <div className="w-full glass-effect p-4 text-xs text-slate-500 flex flex-col gap-2 italic">
-              <p>Last response: {messages[messages.length - 1]?.content.substring(0, 50)}...</p>
+              <p>Last response: {messages?.[messages.length - 1]?.content?.substring(0, 50)}...</p>
             </div>
           </div>
         </div>
