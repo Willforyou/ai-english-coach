@@ -100,11 +100,16 @@ export default function Home() {
 
   const speak = (text: string) => {
     if (!synthRef.current) return;
-    synthRef.current.cancel(); // Stop any current speech
+
+    // Stop recognition before speaking to prevent iOS conflicts
+    if (isListening) {
+      recognitionRef.current?.stop();
+    }
+
+    synthRef.current.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'en-US';
-    // Adjust rate based on level
-    utterance.rate = level === 'Beginner' ? 0.8 : level === 'Intermediate' ? 1.0 : 1.1;
+    utterance.rate = levelRef.current === 'Beginner' ? 0.8 : levelRef.current === 'Intermediate' ? 1.0 : 1.1;
     synthRef.current.speak(utterance);
   };
 
@@ -142,13 +147,28 @@ export default function Home() {
       recognitionRef.current?.stop();
       setIsListening(false);
     } else {
+      if (!recognitionRef.current) {
+        alert("Speech Recognition is not supported in this browser. Please use Safari on iOS.");
+        return;
+      }
       setTranscript('');
-      recognitionRef.current?.start();
-      setIsListening(true);
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+      } catch (e) {
+        console.error("Failed to start recognition:", e);
+      }
     }
   };
 
   const startLesson = async (selectedLevel: 'Beginner' | 'Intermediate' | 'Advanced') => {
+    // 1. IMMEDIATE SYNCHRONOUS AUDIO UNLOCK (CRITICAL FOR iOS SAFARI)
+    if (synthRef.current) {
+      const unlockUtterance = new SpeechSynthesisUtterance('Starting');
+      unlockUtterance.volume = 0;
+      synthRef.current.speak(unlockUtterance);
+    }
+
     const randomTheme = themes[Math.floor(Math.random() * themes.length)];
     setLevel(selectedLevel);
     setTheme(randomTheme);
@@ -170,13 +190,6 @@ export default function Home() {
 
     const welcomeText = `Hello! We've started your ${selectedLevel} session. Today's theme is: ${randomTheme}. I've prepared some helpful vocabulary and phrases for you on the screen. Ready? Let's start!`;
     setMessages([{ role: 'assistant', content: welcomeText }]);
-
-    // Unlock audio for mobile (iOS/Android)
-    if (synthRef.current) {
-      const unlockUtterance = new SpeechSynthesisUtterance(' ');
-      unlockUtterance.volume = 0;
-      synthRef.current.speak(unlockUtterance);
-    }
 
     speak(welcomeText);
     setIsLoading(false);
