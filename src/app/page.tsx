@@ -15,6 +15,7 @@ export default function Home() {
     { role: 'assistant', content: "Hello! I'm your AI English Teacher. Are you ready for our 30-minute voice session? Please choose your level to start the call." }
   ]);
   const [status, setStatus] = useState<'idle' | 'listening' | 'processing' | 'speaking'>('idle');
+  const [statusMessage, setStatusMessage] = useState('');
   const [timeLeft, setTimeLeft] = useState(1800);
   const [isActive, setIsActive] = useState(false);
   const [level, setLevel] = useState<'Beginner' | 'Intermediate' | 'Advanced' | null>(null);
@@ -63,28 +64,28 @@ export default function Home() {
         recognitionRef.current.lang = 'en-US';
 
         recognitionRef.current.onresult = (event: any) => {
-          const current = event.resultIndex;
-          const transcriptValue = event.results[current][0].transcript;
-          setTranscript(transcriptValue);
-
-          if (event.results[current].isFinal) {
-            pendingTranscriptRef.current = transcriptValue;
-            recognitionRef.current.stop(); // This triggers onend
+          let currentText = '';
+          for (let i = 0; i < event.results.length; ++i) {
+            currentText += event.results[i][0].transcript;
           }
+          setTranscript(currentText);
+          pendingTranscriptRef.current = currentText;
         };
 
         recognitionRef.current.onerror = (event: any) => {
           console.error("Speech Recognition Error:", event.error);
+          setStatusMessage(`Error: ${event.error}`);
           setStatus('idle');
         };
 
         recognitionRef.current.onend = () => {
-          if (pendingTranscriptRef.current) {
-            const text = pendingTranscriptRef.current;
+          const finalPrompt = pendingTranscriptRef.current;
+          if (finalPrompt && finalPrompt.trim()) {
+            handleVoiceInput(finalPrompt.trim());
             pendingTranscriptRef.current = '';
-            handleVoiceInput(text);
           } else {
             setStatus('idle');
+            setStatusMessage('');
           }
         };
       }
@@ -126,8 +127,6 @@ export default function Home() {
   };
 
   const handleVoiceInput = async (text: string) => {
-    // During voice input, status is 'listening'. 
-    // We allow transition to 'processing' if we have text.
     if (!text.trim()) {
       setStatus('idle');
       return;
@@ -137,8 +136,10 @@ export default function Home() {
     setMessages((prev) => [...prev, userMessage]);
     setTranscript('');
     setStatus('processing');
+    setStatusMessage('Analyzing your voice...');
 
     try {
+      setStatusMessage('Talking to AI Teacher...');
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -149,11 +150,16 @@ export default function Home() {
         }),
       });
       const data = await res.json();
+
+      if (data.error) throw new Error(data.error);
+
       const content = data.content || '';
+      setStatusMessage('AI is responding...');
       setMessages((prev) => [...prev, { role: 'assistant', content }]);
       speak(content);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      setStatusMessage(`Error: ${error.message}`);
       speak("I'm sorry, I encountered an error. Please try again.");
     }
   };
@@ -161,7 +167,7 @@ export default function Home() {
   const toggleListening = () => {
     if (status === 'listening') {
       recognitionRef.current?.stop();
-      setStatus('idle');
+      setStatusMessage('Stopping microphone...');
     } else if (status === 'idle') {
       if (!recognitionRef.current) {
         alert("Speech Recognition is not supported. Please use Safari on iOS.");
@@ -172,6 +178,7 @@ export default function Home() {
       try {
         recognitionRef.current.start();
         setStatus('listening');
+        setStatusMessage('Listening...');
       } catch (e) {
         console.error(e);
         setStatus('idle');
@@ -260,6 +267,11 @@ export default function Home() {
                   status === 'listening' ? (transcript || "Listening...") :
                     "Tap the mic to speak"}
             </p>
+            {statusMessage && (
+              <p className="text-indigo-500/60 text-xs font-mono animate-pulse">
+                {statusMessage}
+              </p>
+            )}
           </div>
 
           {/* Call Controls & Materials */}
