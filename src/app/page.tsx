@@ -45,10 +45,12 @@ export default function Home() {
   const messagesRef = useRef(messages);
   const levelRef = useRef(level);
   const themeRef = useRef(theme);
+  const statusRef = useRef(status);
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { levelRef.current = level; }, [level]);
   useEffect(() => { themeRef.current = theme; }, [theme]);
+  useEffect(() => { statusRef.current = status; }, [status]);
 
   useEffect(() => {
     setMounted(true);
@@ -124,8 +126,10 @@ export default function Home() {
   };
 
   const handleVoiceInput = async (text: string) => {
-    if (!text.trim() || status !== 'idle') {
-      if (!text.trim()) setStatus('idle');
+    // During voice input, status is 'listening'. 
+    // We allow transition to 'processing' if we have text.
+    if (!text.trim()) {
+      setStatus('idle');
       return;
     }
 
@@ -145,8 +149,9 @@ export default function Home() {
         }),
       });
       const data = await res.json();
-      setMessages((prev) => [...prev, { role: 'assistant', content: data.content || '' }]);
-      speak(data.content || '');
+      const content = data.content || '';
+      setMessages((prev) => [...prev, { role: 'assistant', content }]);
+      speak(content);
     } catch (error) {
       console.error(error);
       speak("I'm sorry, I encountered an error. Please try again.");
