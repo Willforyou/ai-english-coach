@@ -35,7 +35,7 @@ export async function POST(req: Request) {
                 "Content-Type": "application/json",
             },
             body: JSON.stringify({
-                model: "google/gemma-3-4b-it:free",
+                model: "liquid/lfm-2.5-1.2b-instruct:free",
                 messages: [
                     { role: "system", content: systemPrompt },
                     ...messages
