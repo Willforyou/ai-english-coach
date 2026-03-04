@@ -27,8 +27,8 @@ export async function POST(req: Request) {
       
       CRITICAL RULES:
       1. This is a voice call. 
-         - If Beginner: EXACTLY 1 short sentence ending in a question.
-         - Otherwise: Keep responses CONCISE (2-3 sentences maximum).
+         - If Beginner: EXACTLY 1 short sentence ending in ONE simple question. NEVER ask multiple questions.
+         - Otherwise: Keep responses CONCISE (2-3 sentences maximum). Ask only ONE question at a time.
       2. Speak naturally/telephonically. Avoid all markdown (no bold, no lists).
       3. Encourage and praise the student's effort.
     `;
