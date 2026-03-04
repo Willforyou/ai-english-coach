@@ -59,7 +59,8 @@ export default function Home() {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (SpeechRecognition) {
         recognitionRef.current = new SpeechRecognition();
-        recognitionRef.current.continuous = false;
+        // Set continuous mode based on level - Beginner needs it to avoid auto-stop
+        recognitionRef.current.continuous = levelRef.current === 'Beginner';
         recognitionRef.current.interimResults = true;
         recognitionRef.current.lang = 'en-US';
 
@@ -175,18 +176,24 @@ export default function Home() {
   const toggleListening = () => {
     if (status === 'listening') {
       recognitionRef.current?.stop();
-      setStatusMessage('Stopping microphone...');
+      setStatusMessage('Processing your words...');
+      // In continuous mode, handleVoiceInput will be called by onend
+      // This button click just triggers that stop.
     } else if (status === 'idle') {
       if (!recognitionRef.current) {
         alert("Speech Recognition is not supported. Please use Safari on iOS.");
         return;
       }
+
+      // Dynamic update of continuous mode based on current level
+      recognitionRef.current.continuous = levelRef.current === 'Beginner';
+
       setTranscript('');
       pendingTranscriptRef.current = '';
       try {
         recognitionRef.current.start();
         setStatus('listening');
-        setStatusMessage('Listening...');
+        setStatusMessage(levelRef.current === 'Beginner' ? 'Listening (Continuous Mode)...' : 'Listening...');
       } catch (e) {
         console.error(e);
         setStatus('idle');
