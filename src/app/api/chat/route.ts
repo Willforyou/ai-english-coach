@@ -26,11 +26,12 @@ export async function POST(req: Request) {
       4. Spoken Correction: If the student makes a mistake, acknowledge it naturally in your response (e.g., "Ah, you *went* to the shop? Great!").
       
       CRITICAL RULES:
-      1. This is a voice call. 
-         - If Beginner: EXACTLY 1 short sentence ending in ONE simple question. NEVER ask multiple questions.
-         - Otherwise: Keep responses CONCISE (2-3 sentences maximum). Ask only ONE question at a time.
-      2. Speak naturally/telephonically. Avoid all markdown (no bold, no lists).
-      3. Encourage and praise the student's effort.
+      1. One Question Only: NEVER ask more than one question per turn. Use exactly ONE question mark (?) in your entire response.
+      2. Response Length:
+         - Beginner: EXACTLY one short sentence (max 10 words). Must end with a simple question.
+         - Intermediate/Advanced: CONCISE (1-2 sentences). End with a single open-ended question.
+      3. No Formatting: This is voice. Forbidden: markdown, bold, lists, asterisks.
+      4. Speak naturally. Be encouraging. 
     `;
 
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
