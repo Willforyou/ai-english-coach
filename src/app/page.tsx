@@ -164,6 +164,14 @@ export default function Home() {
     }
   };
 
+  const replayLastMessage = () => {
+    const lastAssistantMessage = [...messages].reverse().find(m => m.role === 'assistant');
+    if (lastAssistantMessage) {
+      setStatus('speaking');
+      speak(lastAssistantMessage.content);
+    }
+  };
+
   const toggleListening = () => {
     if (status === 'listening') {
       recognitionRef.current?.stop();
@@ -259,14 +267,38 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="text-center space-y-2 px-4">
+          <div className="text-center space-y-2 px-4 w-full">
             <h3 className="text-xl font-medium text-indigo-400">{level} Level</h3>
-            <p className="text-slate-300 text-lg leading-relaxed min-h-[4rem]">
-              {status === 'processing' ? "Teacher is thinking..." :
-                status === 'speaking' ? "Teacher is speaking..." :
-                  status === 'listening' ? (transcript || "Listening...") :
-                    "Tap the mic to speak"}
-            </p>
+
+            {/* Teacher Transcription Area */}
+            <div className="bg-slate-900/50 rounded-2xl p-6 min-h-[6rem] flex items-center justify-center border border-slate-800 shadow-inner group relative">
+              <p className="text-slate-200 text-lg md:text-xl leading-relaxed font-medium">
+                {status === 'processing' ? (
+                  <span className="flex gap-1">
+                    <span className="animate-bounce">.</span>
+                    <span className="animate-bounce [animation-delay:0.2s]">.</span>
+                    <span className="animate-bounce [animation-delay:0.4s]">.</span>
+                  </span>
+                ) :
+                  status === 'speaking' ? messages[messages.length - 1]?.content :
+                    status === 'listening' ? (transcript || "Listening...") :
+                      messages[messages.length - 1]?.role === 'assistant' ? messages[messages.length - 1].content : "Tap the mic to speak"}
+              </p>
+
+              {/* Replay Button Overlay */}
+              {status === 'idle' && messages.some(m => m.role === 'assistant') && (
+                <button
+                  onClick={replayLastMessage}
+                  className="absolute -right-2 -top-2 bg-indigo-600 hover:bg-indigo-500 p-2 rounded-full shadow-lg transition-all hover:scale-110 active:scale-95"
+                  title="Replay last message"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              )}
+            </div>
+
             {statusMessage && (
               <p className="text-indigo-500/60 text-xs font-mono animate-pulse">
                 {statusMessage}
@@ -323,9 +355,11 @@ export default function Home() {
               </button>
             </div>
 
-            {/* Real-time Subtitles (Small) */}
-            <div className="w-full glass-effect p-4 text-xs text-slate-500 flex flex-col gap-2 italic">
-              <p>Last response: {messages?.[messages.length - 1]?.content?.substring(0, 50)}...</p>
+            {/* Voice Guidance Note */}
+            <div className="w-full text-center">
+              <p className="text-[10px] text-slate-500 uppercase tracking-widest">
+                {status === 'listening' ? "Release your thoughts..." : "Press to start speaking"}
+              </p>
             </div>
           </div>
         </div>
