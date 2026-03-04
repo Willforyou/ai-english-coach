@@ -227,7 +227,10 @@ export default function Home() {
       console.error(e);
     }
 
-    const welcomeText = `Hello! I've prepared some helpful materials for this ${selectedLevel} session. Today's theme is ${randomTheme}. Ready?`;
+    const welcomeText = selectedLevel === 'Beginner'
+      ? `Hello! Today we talk about ${randomTheme}. Are you ready?`
+      : `Hello! I've prepared some helpful materials for this ${selectedLevel} session. Today's theme is ${randomTheme}. Ready?`;
+
     setMessages([{ role: 'assistant', content: welcomeText }]);
     speak(welcomeText);
   };

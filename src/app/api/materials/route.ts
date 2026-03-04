@@ -17,8 +17,12 @@ export async function POST(req: Request) {
       Student Level: ${level}
       Theme: ${theme}
 
-      TASK: Provide lesson materials to help the student prepare for a conversation.
+      TASK: Provide lesson materials for the student.
       
+      CONSTRAINTS for Student Level "${level}":
+      - If Beginner: Use only very simple words (CEFR A1). Phrases must be 2-4 words long maximum.
+      - If Intermediate/Advanced: Natural and professional.
+
       OUTPUT FORMAT (JSON):
       {
         "vocabulary": ["word1", "word2", "word3", "word4", "word5"],
