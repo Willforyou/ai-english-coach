@@ -23,8 +23,11 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [materials, setMaterials] = useState<{ vocabulary: string[], phrases: string[] } | null>(null);
+  const [translation, setTranslation] = useState<string | null>(null);
+  const [isTranslating, setIsTranslating] = useState(false);
 
   const pendingTranscriptRef = useRef<string>('');
+  const translationTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const themes = [
     "Coffee Shop Ordering",
@@ -110,6 +113,37 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [isActive, timeLeft]);
 
+  const clearTranslationTimer = () => {
+    if (translationTimerRef.current) {
+      clearTimeout(translationTimerRef.current);
+      translationTimerRef.current = null;
+    }
+  };
+
+  const startTranslationTimer = (text: string) => {
+    clearTranslationTimer();
+    if (levelRef.current !== 'Beginner') return;
+
+    translationTimerRef.current = setTimeout(async () => {
+      setIsTranslating(true);
+      try {
+        const res = await fetch('/api/translate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+        const data = await res.json();
+        if (data.translation) {
+          setTranslation(data.translation);
+        }
+      } catch (error) {
+        console.error("Failed to translate:", error);
+      } finally {
+        setIsTranslating(false);
+      }
+    }, 10000); // 10 seconds delay
+  };
+
   const speak = (text: string) => {
     if (!synthRef.current) return;
 
@@ -125,6 +159,9 @@ export default function Home() {
 
     utterance.onend = () => {
       setStatus('idle');
+      if (levelRef.current === 'Beginner') {
+        startTranslationTimer(text);
+      }
     };
 
     synthRef.current.speak(utterance);
@@ -135,6 +172,9 @@ export default function Home() {
       setStatus('idle');
       return;
     }
+
+    clearTranslationTimer();
+    setTranslation(null);
 
     const userMessage = { role: 'user', content: text };
     setMessages((prev) => [...prev, userMessage]);
@@ -183,6 +223,8 @@ export default function Home() {
       // In continuous mode, handleVoiceInput will be called by onend
       // This button click just triggers that stop.
     } else if (status === 'idle') {
+      clearTranslationTimer();
+      setTranslation(null);
       if (!recognitionRef.current) {
         alert("Speech Recognition is not supported. Please use Safari on iOS.");
         return;
@@ -217,6 +259,8 @@ export default function Home() {
     setTheme(randomTheme);
     setIsActive(true);
     setStatus('processing');
+    setTranslation(null);
+    clearTranslationTimer();
 
     try {
       const matRes = await fetch('/api/materials', {
@@ -297,6 +341,27 @@ export default function Home() {
                     status === 'listening' ? (transcript || "Listening...") :
                       messages[messages.length - 1]?.role === 'assistant' ? messages[messages.length - 1].content : "Tap the mic to speak"}
               </p>
+
+              {/* Translation Display */}
+              {(translation || isTranslating) && (
+                <div className="absolute top-full left-0 right-0 mt-2 p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl animate-in fade-in slide-in-from-top-2 duration-300">
+                  <p className="text-sm text-indigo-300 italic text-center">
+                    {isTranslating ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" />
+                        <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:0.2s]" />
+                        <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:0.4s]" />
+                        Translating...
+                      </span>
+                    ) : (
+                      <>
+                        <span className="text-[10px] font-bold uppercase tracking-wider block mb-1 opacity-50">Translation</span>
+                        {translation}
+                      </>
+                    )}
+                  </p>
+                </div>
+              )}
 
               {/* Replay Button Overlay */}
               {status === 'idle' && messages.some(m => m.role === 'assistant') && (
