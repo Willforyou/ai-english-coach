@@ -135,6 +135,7 @@ export default function Home() {
         const data = await res.json();
         if (data.translation) {
           setTranslation(data.translation);
+          speak(data.translation, 'zh-TW');
         }
       } catch (error) {
         console.error("Failed to translate:", error);
@@ -144,7 +145,7 @@ export default function Home() {
     }, 10000); // 10 seconds delay
   };
 
-  const speak = (text: string) => {
+  const speak = (text: string, lang: string = 'en-US') => {
     if (!synthRef.current) return;
 
     // Stop recognition before speaking to prevent iOS conflicts
@@ -154,16 +155,22 @@ export default function Home() {
 
     synthRef.current.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'en-US';
-    utterance.rate = levelRef.current === 'Beginner' ? 0.8 : levelRef.current === 'Intermediate' ? 1.0 : 1.1;
+    utterance.lang = lang;
+    
+    if (lang === 'en-US') {
+      utterance.rate = levelRef.current === 'Beginner' ? 0.8 : levelRef.current === 'Intermediate' ? 1.0 : 1.1;
+    } else {
+      utterance.rate = 1.0;
+    }
 
     utterance.onend = () => {
       setStatus('idle');
-      if (levelRef.current === 'Beginner') {
+      if (lang === 'en-US' && levelRef.current === 'Beginner') {
         startTranslationTimer(text);
       }
     };
 
+    setStatus('speaking');
     synthRef.current.speak(utterance);
   };
 
