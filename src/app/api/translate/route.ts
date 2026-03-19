@@ -29,7 +29,7 @@ export async function POST(req: Request) {
                 "Content-Type": "application/json",
             },
             body: JSON.stringify({
-                model: "liquid/lfm-2.5-1.2b-instruct:free",
+                model: "google/gemini-2.0-flash-exp:free",
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: text }
