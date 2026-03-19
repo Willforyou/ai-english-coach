@@ -462,7 +462,7 @@ export default function Home() {
         </div>
       )}
       <div className="fixed bottom-4 right-4 px-3 py-1 bg-white/10 rounded-full text-[10px] font-mono text-slate-500 pointer-events-none">
-        v1.0.3 (Liquid-1.2B)
+        v1.1.0 (Llama-3.2)
       </div>
     </main>
   );
