@@ -170,6 +170,11 @@ export default function Home() {
       }
     };
 
+    utterance.onerror = (event) => {
+      console.error("SpeechSynthesisUtterance Error:", event);
+      setStatus('idle');
+    };
+
     setStatus('speaking');
     synthRef.current.speak(utterance);
   };
@@ -270,13 +275,15 @@ export default function Home() {
     clearTranslationTimer();
 
     try {
-      const matRes = await fetch('/api/materials', {
+      // Fetch materials in the background without blocking the welcome message
+      fetch('/api/materials', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ level: selectedLevel, theme: randomTheme }),
-      });
-      const matData = await matRes.json();
-      setMaterials(matData);
+      })
+      .then(res => res.json())
+      .then(data => setMaterials(data))
+      .catch(e => console.error("Failed to load materials:", e));
     } catch (e) {
       console.error(e);
     }
