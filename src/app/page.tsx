@@ -145,7 +145,7 @@ export default function Home() {
     }, 10000); // 10 seconds delay
   };
 
-  const speak = (text: string, lang: string = 'en-US') => {
+  const speak = (text: string, lang: string = 'en-US', rate?: number) => {
     if (!synthRef.current) return;
 
     // Stop recognition before speaking to prevent iOS conflicts
@@ -157,7 +157,9 @@ export default function Home() {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
     
-    if (lang === 'en-US') {
+    if (rate !== undefined) {
+      utterance.rate = rate;
+    } else if (lang === 'en-US') {
       utterance.rate = levelRef.current === 'Beginner' ? 0.8 : levelRef.current === 'Intermediate' ? 1.0 : 1.1;
     } else {
       utterance.rate = 1.0;
@@ -293,7 +295,10 @@ export default function Home() {
       : `Hello! I've prepared some helpful materials for this ${selectedLevel} session. Today's theme is ${randomTheme}. Ready?`;
 
     setMessages([{ role: 'assistant', content: welcomeText }]);
-    speak(welcomeText);
+    
+    // Explicitly set the rate to avoid race conditions with levelRef
+    const initialRate = selectedLevel === 'Beginner' ? 0.8 : selectedLevel === 'Intermediate' ? 1.0 : 1.1;
+    speak(welcomeText, 'en-US', initialRate);
   };
 
   const formatTime = (seconds: number) => {

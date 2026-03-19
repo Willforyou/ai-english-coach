@@ -37,7 +37,7 @@ export async function POST(req: Request) {
                 "Content-Type": "application/json",
             },
             body: JSON.stringify({
-                model: "liquid/lfm-2.5-1.2b-instruct:free",
+                model: "meta-llama/llama-3.2-3b-instruct:free",
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: "Generate the lesson materials." }
