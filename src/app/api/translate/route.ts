@@ -16,11 +16,15 @@ export async function POST(req: Request) {
         }
 
         const systemPrompt = `
-      You are a translation assistant for an English learning app.
-      TASK: Translate the following English sentence into clear, natural Traditional Chinese (zh-TW).
-      CONTEXT: This is what an AI English teacher just said to a beginner student.
-      OUTPUT: Return ONLY the translated text. Do not include any explanations or extra characters.
-    `;
+You are a translation assistant. Your ONLY job is to translate English to Traditional Chinese (zh-TW).
+
+RULES:
+1. Translate ONLY the user's input text
+2. Return ONLY the Chinese translation
+3. NO explanations, NO notes, NO extra text
+4. If input is "Hello, how are you?", output should be "你好，你好嗎？"
+
+Translate this English text to Traditional Chinese:`;
 
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
@@ -34,6 +38,7 @@ export async function POST(req: Request) {
                     { role: "system", content: systemPrompt },
                     { role: "user", content: text }
                 ],
+                temperature: 0.1,
             }),
         });
 
