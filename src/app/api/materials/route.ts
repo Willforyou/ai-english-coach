@@ -8,7 +8,8 @@ export async function POST(req: Request) {
         if (!apiKey || apiKey === 'your_api_key_here') {
             return NextResponse.json({
                 vocabulary: ["Key Word 1", "Key Word 2"],
-                phrases: ["Useful Phrase 1", "Useful Phrase 2"]
+                phrases: ["Useful Phrase 1", "Useful Phrase 2"],
+                responses: ["Yes, I understand.", "No, I don't understand."]
             });
         }
 
@@ -26,8 +27,15 @@ export async function POST(req: Request) {
       OUTPUT FORMAT (JSON):
       {
         "vocabulary": ["word1", "word2", "word3", "word4", "word5"],
-        "phrases": ["phrase1", "phrase2", "phrase3"]
+        "phrases": ["phrase1", "phrase2", "phrase3"],
+        "responses": ["simple response 1", "simple response 2", "simple response 3"]
       }
+      
+      IMPORTANT: "responses" should contain 3-4 simple answer templates that a beginner can use to respond to questions in this theme.
+      Examples for different themes:
+      - Coffee Shop: "I want a coffee, please.", "How much is this?", "Thank you."
+      - Job Interview: "I have experience.", "I can start next week.", "Thank you for asking."
+      - Free Talk: "I like it.", "I don't know.", "That's interesting."
     `;
 
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {

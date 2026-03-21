@@ -22,16 +22,19 @@ export default function Home() {
   const [theme, setTheme] = useState<string>('');
   const [mounted, setMounted] = useState(false);
   const [transcript, setTranscript] = useState('');
-  const [materials, setMaterials] = useState<{ vocabulary: string[], phrases: string[] } | null>(null);
+  const [materials, setMaterials] = useState<{ vocabulary: string[], phrases: string[], responses?: string[] } | null>(null);
   const [translation, setTranslation] = useState<string | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [isFreeTalk, setIsFreeTalk] = useState(false);
   const [currentCaption, setCurrentCaption] = useState<string>('');
+  const [responseHints, setResponseHints] = useState<string[]>([]);
+  const [showResponseHints, setShowResponseHints] = useState(false);
 
   const pendingTranscriptRef = useRef<string>('');
   const translationTimerRef = useRef<NodeJS.Timeout | null>(null);
   const captionTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const themes = [
     "Coffee Shop Ordering",
@@ -56,6 +59,13 @@ export default function Home() {
     { text: "What does that mean?", zh: "那是什麼意思？" },
     { text: "How do you spell that?", zh: "那怎麼拼？" },
     { text: "Can you give me an example?", zh: "可以給我例子嗎？" }
+  ];
+
+  const getDefaultResponseHints = (): string[] => [
+    "Yes, I understand.",
+    "No, I don't understand.",
+    "Can you repeat that?",
+    "Please speak slower."
   ];
 
   const recognitionRef = useRef<any>(null);
@@ -131,6 +141,29 @@ export default function Home() {
       clearTimeout(translationTimerRef.current);
       translationTimerRef.current = null;
     }
+  };
+
+  const clearSilenceTimer = () => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    setShowResponseHints(false);
+  };
+
+  const startSilenceTimer = () => {
+    clearSilenceTimer();
+    if (levelRef.current !== 'Beginner') return;
+
+    silenceTimerRef.current = setTimeout(() => {
+      setShowResponseHints(true);
+    }, 8000);
+  };
+
+  const handleResponseHint = (hint: string) => {
+    clearSilenceTimer();
+    setShowResponseHints(false);
+    handleVoiceInput(hint);
   };
 
   const startTranslationTimer = (text: string) => {
@@ -211,6 +244,7 @@ export default function Home() {
       }
       if (lang === 'en-US' && levelRef.current === 'Beginner') {
         startTranslationTimer(text);
+        setResponseHints(materials?.responses || getDefaultResponseHints());
       }
     };
 
@@ -312,12 +346,12 @@ export default function Home() {
   const toggleListening = () => {
     if (status === 'listening') {
       recognitionRef.current?.stop();
+      clearSilenceTimer();
       setStatusMessage('Processing your words...');
-      // In continuous mode, handleVoiceInput will be called by onend
-      // This button click just triggers that stop.
     } else if (status === 'idle') {
       clearTranslationTimer();
       setTranslation(null);
+      clearSilenceTimer();
       if (!recognitionRef.current) {
         alert("Speech Recognition is not supported. Please use Safari on iOS.");
         return;
@@ -332,6 +366,7 @@ export default function Home() {
         recognitionRef.current.start();
         setStatus('listening');
         setStatusMessage(levelRef.current === 'Beginner' ? 'Listening (Continuous Mode)...' : 'Listening...');
+        startSilenceTimer();
       } catch (e) {
         console.error(e);
         setStatus('idle');
@@ -522,10 +557,50 @@ export default function Home() {
                     )) : <li className="text-slate-500 italic">No phrases found</li>}
                   </ul>
                 </div>
+                {materials?.responses && materials.responses.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-bold text-amber-400 uppercase tracking-widest mb-1">How to Respond</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {materials.responses.map((r: string, i: number) => (
+                        <button
+                          key={i}
+                          onClick={() => handleResponseHint(r)}
+                          className="px-2 py-1 bg-amber-500/10 hover:bg-amber-500/20 rounded text-xs border border-amber-500/30 transition-all"
+                        >
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
             <div className="flex flex-col items-center gap-6 w-full px-8">
+              {/* Response Hints Panel - Show when user is silent */}
+              {showResponseHints && responseHints.length > 0 && (
+                <div className="w-full glass-effect p-4 space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-200 border-amber-500/30">
+                  <h4 className="text-xs font-bold text-amber-400 uppercase tracking-widest mb-2">Need help responding?</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {responseHints.map((hint, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleResponseHint(hint)}
+                        className="px-3 py-2 bg-amber-500/20 hover:bg-amber-500/30 rounded-lg transition-all border border-amber-500/40 text-sm text-slate-200"
+                      >
+                        {hint}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setShowResponseHints(false)}
+                    className="text-xs text-slate-500 hover:text-slate-400 mt-2"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+
               {/* Help Phrases Panel */}
               {showHelp && (
                 <div className="w-full glass-effect p-4 space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
