@@ -26,9 +26,12 @@ export default function Home() {
   const [translation, setTranslation] = useState<string | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [isFreeTalk, setIsFreeTalk] = useState(false);
+  const [currentCaption, setCurrentCaption] = useState<string>('');
 
   const pendingTranscriptRef = useRef<string>('');
   const translationTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const captionTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const themes = [
     "Coffee Shop Ordering",
@@ -163,6 +166,12 @@ export default function Home() {
       recognitionRef.current?.stop();
     }
 
+    // Clear previous caption timer
+    if (captionTimerRef.current) {
+      clearInterval(captionTimerRef.current);
+      captionTimerRef.current = null;
+    }
+
     synthRef.current.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
@@ -175,8 +184,31 @@ export default function Home() {
       utterance.rate = 1.0;
     }
 
+    // Typewriter effect for captions
+    if (lang === 'en-US') {
+      setCurrentCaption('');
+      let charIndex = 0;
+      const speed = lang === 'en-US' ? (levelRef.current === 'Beginner' ? 120 : 80) : 100;
+      captionTimerRef.current = setInterval(() => {
+        if (charIndex < text.length) {
+          setCurrentCaption(text.slice(0, charIndex + 1));
+          charIndex++;
+        } else {
+          if (captionTimerRef.current) {
+            clearInterval(captionTimerRef.current);
+            captionTimerRef.current = null;
+          }
+        }
+      }, speed);
+    }
+
     utterance.onend = () => {
       setStatus('idle');
+      setCurrentCaption(text);
+      if (captionTimerRef.current) {
+        clearInterval(captionTimerRef.current);
+        captionTimerRef.current = null;
+      }
       if (lang === 'en-US' && levelRef.current === 'Beginner') {
         startTranslationTimer(text);
       }
@@ -185,6 +217,10 @@ export default function Home() {
     utterance.onerror = (event) => {
       console.error("SpeechSynthesisUtterance Error:", event);
       setStatus('idle');
+      if (captionTimerRef.current) {
+        clearInterval(captionTimerRef.current);
+        captionTimerRef.current = null;
+      }
     };
 
     setStatus('speaking');
@@ -303,7 +339,7 @@ export default function Home() {
     }
   };
 
-  const startLesson = async (selectedLevel: 'Beginner' | 'Intermediate' | 'Advanced') => {
+  const startLesson = async (selectedLevel: 'Beginner' | 'Intermediate' | 'Advanced', freeTalk: boolean = false) => {
     // 1. IMMEDIATE SYNCHRONOUS AUDIO UNLOCK
     if (synthRef.current) {
       const unlockUtterance = new SpeechSynthesisUtterance(' ');
@@ -311,31 +347,36 @@ export default function Home() {
       synthRef.current.speak(unlockUtterance);
     }
 
-    const randomTheme = themes[Math.floor(Math.random() * themes.length)];
+    const randomTheme = freeTalk ? 'Free Talk' : themes[Math.floor(Math.random() * themes.length)];
     setLevel(selectedLevel);
     setTheme(randomTheme);
+    setIsFreeTalk(freeTalk);
     setIsActive(true);
     setStatus('processing');
     setTranslation(null);
     clearTranslationTimer();
 
-    try {
-      // Fetch materials in the background without blocking the welcome message
-      fetch('/api/materials', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ level: selectedLevel, theme: randomTheme }),
-      })
-      .then(res => res.json())
-      .then(data => setMaterials(data))
-      .catch(e => console.error("Failed to load materials:", e));
-    } catch (e) {
-      console.error(e);
+    if (!freeTalk) {
+      try {
+        // Fetch materials in the background without blocking the welcome message
+        fetch('/api/materials', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ level: selectedLevel, theme: randomTheme }),
+        })
+        .then(res => res.json())
+        .then(data => setMaterials(data))
+        .catch(e => console.error("Failed to load materials:", e));
+      } catch (e) {
+        console.error(e);
+      }
     }
 
-    const welcomeText = selectedLevel === 'Beginner'
-      ? `Hello! Today we talk about ${randomTheme}. Are you ready?`
-      : `Hello! I've prepared some helpful materials for this ${selectedLevel} session. Today's theme is ${randomTheme}. Ready?`;
+    const welcomeText = freeTalk
+      ? `Hello! Let's have a free conversation. We can talk about anything you like. What's on your mind today?`
+      : selectedLevel === 'Beginner'
+        ? `Hello! Today we talk about ${randomTheme}. Are you ready?`
+        : `Hello! I've prepared some helpful materials for this ${selectedLevel} session. Today's theme is ${randomTheme}. Ready?`;
 
     setMessages([{ role: 'assistant', content: welcomeText }]);
     
@@ -374,6 +415,10 @@ export default function Home() {
             <button onClick={() => startLesson('Intermediate')} className="w-full py-4 rounded-2xl bg-slate-800 hover:bg-slate-700 transition-all border border-slate-700 font-bold text-lg">Intermediate</button>
             <button onClick={() => startLesson('Advanced')} className="w-full py-4 rounded-2xl bg-slate-800 hover:bg-slate-700 transition-all border border-slate-700 font-bold text-lg">Advanced</button>
           </div>
+          <div className="pt-4 border-t border-slate-700">
+            <p className="text-slate-500 text-sm mb-3">Or try Free Talk mode (no specific topic)</p>
+            <button onClick={() => startLesson('Beginner', true)} className="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 transition-all font-bold text-sm">Free Talk</button>
+          </div>
         </div>
       ) : (
         <div className="w-full max-w-md flex flex-col items-center gap-8">
@@ -399,7 +444,7 @@ export default function Home() {
                     <span className="animate-bounce [animation-delay:0.4s]">.</span>
                   </span>
                 ) :
-                  status === 'speaking' ? messages[messages.length - 1]?.content :
+                  status === 'speaking' ? (currentCaption || messages[messages.length - 1]?.content) :
                     status === 'listening' ? (transcript || "Listening...") :
                       messages[messages.length - 1]?.role === 'assistant' ? messages[messages.length - 1].content : "Tap the mic to speak"}
               </p>
