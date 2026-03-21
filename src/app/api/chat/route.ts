@@ -81,7 +81,55 @@ export async function POST(req: Request) {
             throw new Error(data.error.message || "OpenRouter Error");
         }
 
-        return NextResponse.json({ content: data.choices[0].message.content });
+        const assistantResponse = data.choices[0].message.content;
+
+        let suggestedResponses: string[] = [];
+        if (level === 'Beginner') {
+            const responsePrompt = `You are an English teacher assistant. The teacher just asked: "${assistantResponse}"
+
+Generate 3-4 simple response options a beginner student could say next.
+
+RULES:
+1. Each response must be simple (CEFR A1 level, max 6 words)
+2. Return ONLY a JSON array of strings
+3. No explanations, no markdown
+
+Examples:
+- For "What would you like to drink?": ["I want water.", "Coffee, please.", "How much is it?", "I don't know."]
+- For "Where are you from?": ["I am from Taiwan.", "I live in Taipei.", "And you?", "I don't understand."]
+
+Respond with JSON array only:`;
+
+            try {
+                const hintRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${apiKey}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        model: "nvidia/nemotron-3-nano-30b-a3b:free",
+                        messages: [{ role: "user", content: responsePrompt }],
+                        temperature: 0.7,
+                    }),
+                });
+                const hintData = await hintRes.json();
+                if (hintData.choices?.[0]?.message?.content) {
+                    const hintContent = hintData.choices[0].message.content;
+                    const jsonMatch = hintContent.match(/\[[\s\S]*\]/);
+                    if (jsonMatch) {
+                        suggestedResponses = JSON.parse(jsonMatch[0]);
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to generate hints:", e);
+            }
+        }
+
+        return NextResponse.json({ 
+            content: assistantResponse,
+            responses: suggestedResponses
+        });
     } catch (error: any) {
         console.error("Chat API Error:", error.message);
         return NextResponse.json({ error: error.message || "Failed to connect to AI Teacher" }, { status: 500 });

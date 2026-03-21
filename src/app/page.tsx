@@ -284,6 +284,12 @@ export default function Home() {
       const data = await res.json();
       if (data.content) {
         setMessages((prev) => [...prev, { role: 'assistant', content: data.content }]);
+        if (data.responses && data.responses.length > 0) {
+          setResponseHints(data.responses);
+          if (materials) {
+            setMaterials({ ...materials, responses: data.responses });
+          }
+        }
         setTimeout(() => speak(data.content), 500);
       }
     } catch (error) {
@@ -324,6 +330,14 @@ export default function Home() {
       const content = data.content || '';
       setStatusMessage('AI is responding...');
       setMessages((prev) => [...prev, { role: 'assistant', content }]);
+      
+      if (data.responses && data.responses.length > 0) {
+        setResponseHints(data.responses);
+        if (materials) {
+          setMaterials({ ...materials, responses: data.responses });
+        }
+      }
+      
       speak(content);
     } catch (error: any) {
       console.error(error);
