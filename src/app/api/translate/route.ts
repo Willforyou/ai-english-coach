@@ -29,7 +29,7 @@ export async function POST(req: Request) {
                 "Content-Type": "application/json",
             },
             body: JSON.stringify({
-                model: "qwen/qwen3-next-80b-a3b-instruct:free",
+                model: "openrouter/free",
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: text }
