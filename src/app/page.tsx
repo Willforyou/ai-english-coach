@@ -25,6 +25,7 @@ export default function Home() {
   const [materials, setMaterials] = useState<{ vocabulary: string[], phrases: string[] } | null>(null);
   const [translation, setTranslation] = useState<string | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   const pendingTranscriptRef = useRef<string>('');
   const translationTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -43,6 +44,15 @@ export default function Home() {
     "Ordering at a Restaurant",
     "Asking for Directions",
     "Check-in at a Hotel"
+  ];
+
+  const helpPhrases = [
+    { text: "Sorry, could you say that again?", zh: "抱歉，可以再說一次嗎？" },
+    { text: "Could you speak slower, please?", zh: "可以說慢一點嗎？" },
+    { text: "I don't understand.", zh: "我不明白。" },
+    { text: "What does that mean?", zh: "那是什麼意思？" },
+    { text: "How do you spell that?", zh: "那怎麼拼？" },
+    { text: "Can you give me an example?", zh: "可以給我例子嗎？" }
   ];
 
   const recognitionRef = useRef<any>(null);
@@ -181,6 +191,36 @@ export default function Home() {
     synthRef.current.speak(utterance);
   };
 
+  const handleHelpPhrase = async (phrase: { text: string; zh: string }) => {
+    setShowHelp(false);
+    clearTranslationTimer();
+    setTranslation(null);
+    
+    const userMessage = { role: 'user', content: phrase.text };
+    setMessages((prev) => [...prev, userMessage]);
+    setStatus('speaking');
+    speak(phrase.text);
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [...messagesRef.current, userMessage],
+          level: levelRef.current,
+          theme: themeRef.current
+        }),
+      });
+      const data = await res.json();
+      if (data.content) {
+        setMessages((prev) => [...prev, { role: 'assistant', content: data.content }]);
+        setTimeout(() => speak(data.content), 500);
+      }
+    } catch (error) {
+      console.error("Help phrase error:", error);
+    }
+  };
+
   const handleVoiceInput = async (text: string) => {
     if (!text.trim()) {
       setStatus('idle');
@@ -222,13 +262,16 @@ export default function Home() {
     }
   };
 
-  const replayLastMessage = () => {
+  const replayLastMessage = (slow: boolean = false) => {
     const lastAssistantMessage = [...messages].reverse().find(m => m.role === 'assistant');
     if (lastAssistantMessage) {
       setStatus('speaking');
-      speak(lastAssistantMessage.content);
+      speak(lastAssistantMessage.content, 'en-US', slow ? 0.6 : undefined);
     }
   };
+
+  const replayNormal = () => replayLastMessage(false);
+  const replaySlow = () => replayLastMessage(true);
 
   const toggleListening = () => {
     if (status === 'listening') {
@@ -382,17 +425,28 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Replay Button Overlay */}
+              {/* Replay Buttons Overlay */}
               {status === 'idle' && messages.some(m => m.role === 'assistant') && (
-                <button
-                  onClick={replayLastMessage}
-                  className="absolute -right-2 -top-2 bg-indigo-600 hover:bg-indigo-500 p-2 rounded-full shadow-lg transition-all hover:scale-110 active:scale-95"
-                  title="Replay last message"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                  </svg>
-                </button>
+                <div className="absolute -right-2 -top-2 flex gap-1">
+                  <button
+                    onClick={replayNormal}
+                    className="bg-indigo-600 hover:bg-indigo-500 p-2 rounded-full shadow-lg transition-all hover:scale-110 active:scale-95"
+                    title="Replay"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={replaySlow}
+                    className="bg-amber-600 hover:bg-amber-500 p-2 rounded-full shadow-lg transition-all hover:scale-110 active:scale-95"
+                    title="Slow (0.6x)"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 000 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                </div>
               )}
             </div>
 
@@ -427,25 +481,58 @@ export default function Home() {
             )}
 
             <div className="flex flex-col items-center gap-6 w-full px-8">
-              <button
-                onClick={toggleListening}
-                disabled={status === 'processing' || status === 'speaking'}
-                className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-xl ${status === 'listening'
-                  ? 'bg-red-500 hover:bg-red-600 scale-110 shadow-red-500/40'
-                  : 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/40'
-                  } disabled:opacity-50`}
-              >
-                {status === 'listening' ? (
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H10a1 1 0 01-1-1v-4z" />
-                  </svg>
-                ) : (
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                  </svg>
-                )}
-              </button>
+              {/* Help Phrases Panel */}
+              {showHelp && (
+                <div className="w-full glass-effect p-4 space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                  <h4 className="text-xs font-bold text-amber-400 uppercase tracking-widest mb-2">Need Help?</h4>
+                  {helpPhrases.map((phrase, i) => (
+                    <button
+                      key={i}
+                      onClick={() => handleHelpPhrase(phrase)}
+                      className="w-full text-left p-3 bg-slate-800/50 hover:bg-slate-700/50 rounded-lg transition-all border border-slate-700/50 hover:border-amber-500/50"
+                    >
+                      <p className="text-sm text-slate-200">{phrase.text}</p>
+                      <p className="text-xs text-slate-500 mt-1">{phrase.zh}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex items-center gap-4">
+                {/* Help Button */}
+                <button
+                  onClick={() => setShowHelp(!showHelp)}
+                  disabled={status === 'processing' || status === 'speaking'}
+                  className={`w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-lg ${showHelp
+                    ? 'bg-amber-500 shadow-amber-500/30'
+                    : 'bg-slate-700 hover:bg-slate-600 shadow-slate-500/20'
+                    } disabled:opacity-50`}
+                  title="Help phrases"
+                >
+                  <span className="text-xl font-bold">?</span>
+                </button>
+
+                {/* Mic Button */}
+                <button
+                  onClick={toggleListening}
+                  disabled={status === 'processing' || status === 'speaking'}
+                  className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-xl ${status === 'listening'
+                    ? 'bg-red-500 hover:bg-red-600 scale-110 shadow-red-500/40'
+                    : 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/40'
+                    } disabled:opacity-50`}
+                >
+                  {status === 'listening' ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H10a1 1 0 01-1-1v-4z" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
 
               <button onClick={() => window.location.reload()} className="text-slate-500 hover:text-slate-300 transition-colors text-sm font-medium uppercase tracking-widest">
                 End Session
