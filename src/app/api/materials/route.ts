@@ -37,7 +37,7 @@ export async function POST(req: Request) {
                 "Content-Type": "application/json",
             },
             body: JSON.stringify({
-                model: "meta-llama/llama-3.3-8b-instruct:free",
+                model: "qwen/qwen3-next-80b-a3b-instruct:free",
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: "Generate the lesson materials." }
