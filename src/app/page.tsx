@@ -191,15 +191,24 @@ export default function Home() {
     }, 10000); // 10 seconds delay
   };
 
+  const speakTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const speak = (text: string, lang: string = 'en-US', rate?: number) => {
     if (!synthRef.current) return;
+    if (!text || !text.trim()) {
+      setStatus('idle');
+      return;
+    }
 
-    // Stop recognition before speaking to prevent iOS conflicts
-    if (status === 'listening') {
+    if (speakTimeoutRef.current) {
+      clearTimeout(speakTimeoutRef.current);
+      speakTimeoutRef.current = null;
+    }
+
+    if (statusRef.current === 'listening') {
       recognitionRef.current?.stop();
     }
 
-    // Clear previous caption timer
     if (captionTimerRef.current) {
       clearInterval(captionTimerRef.current);
       captionTimerRef.current = null;
@@ -217,7 +226,6 @@ export default function Home() {
       utterance.rate = 1.0;
     }
 
-    // Typewriter effect for captions
     if (lang === 'en-US') {
       setCurrentCaption('');
       let charIndex = 0;
@@ -235,7 +243,22 @@ export default function Home() {
       }, speed);
     }
 
+    const estimatedDuration = Math.max(text.length * 150, 5000);
+
+    speakTimeoutRef.current = setTimeout(() => {
+      console.warn('Speech synthesis timeout - forcing idle state');
+      setStatus('idle');
+      if (captionTimerRef.current) {
+        clearInterval(captionTimerRef.current);
+        captionTimerRef.current = null;
+      }
+    }, estimatedDuration);
+
     utterance.onend = () => {
+      if (speakTimeoutRef.current) {
+        clearTimeout(speakTimeoutRef.current);
+        speakTimeoutRef.current = null;
+      }
       setStatus('idle');
       setCurrentCaption(text);
       if (captionTimerRef.current) {
@@ -249,6 +272,10 @@ export default function Home() {
     };
 
     utterance.onerror = (event) => {
+      if (speakTimeoutRef.current) {
+        clearTimeout(speakTimeoutRef.current);
+        speakTimeoutRef.current = null;
+      }
       console.error("SpeechSynthesisUtterance Error:", event);
       setStatus('idle');
       if (captionTimerRef.current) {
