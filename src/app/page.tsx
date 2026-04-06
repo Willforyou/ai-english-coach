@@ -242,9 +242,6 @@ export default function Home() {
 
   // Audio visualizer — direct DOM refs (no re-render on every frame)
   const ringRefs = [useRef<HTMLDivElement>(null), useRef<HTMLDivElement>(null), useRef<HTMLDivElement>(null), useRef<HTMLDivElement>(null)];
-  const audioCtxRef   = useRef<AudioContext | null>(null);
-  const analyserRef   = useRef<AnalyserNode | null>(null);
-  const streamRef     = useRef<MediaStream | null>(null);
   const listenAnimRef = useRef<number | null>(null);
   const speakAnimRef  = useRef<number | null>(null);
 
@@ -284,52 +281,31 @@ export default function Home() {
     });
   };
 
-  const stopVisualization = () => {
+  const stopAllAnimations = () => {
     if (listenAnimRef.current) { cancelAnimationFrame(listenAnimRef.current); listenAnimRef.current = null; }
     if (speakAnimRef.current)  { cancelAnimationFrame(speakAnimRef.current);  speakAnimRef.current  = null; }
-    try { audioCtxRef.current?.close(); } catch (_) {}
-    audioCtxRef.current = null; analyserRef.current = null;
-    streamRef.current?.getTracks().forEach(t => t.stop()); streamRef.current = null;
     setRingLevel(0);
   };
 
-  const startListenVisualization = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      const ctx = new AudioContext(); audioCtxRef.current = ctx;
-      const analyser = ctx.createAnalyser(); analyserRef.current = analyser;
-      analyser.fftSize = 128;
-      ctx.createMediaStreamSource(stream).connect(analyser);
-      const buf = new Uint8Array(analyser.frequencyBinCount);
-      const tick = () => {
-        analyser.getByteFrequencyData(buf);
-        const avg = buf.reduce((a, b) => a + b, 0) / buf.length;
-        setRingLevel(Math.min(1, avg / 55));
-        listenAnimRef.current = requestAnimationFrame(tick);
-      };
-      listenAnimRef.current = requestAnimationFrame(tick);
-    } catch (_) { /* microphone permission denied — visualization skipped */ }
-  };
-
-  const startSpeakVisualization = () => {
-    if (speakAnimRef.current) cancelAnimationFrame(speakAnimRef.current);
+  // Unified sine-wave animation — speed & amplitude vary by state
+  const startAnimation = (speed: number, amplitude: number, base: number, ref: React.MutableRefObject<number | null>) => {
+    if (ref.current) cancelAnimationFrame(ref.current);
     let t = 0;
     const tick = () => {
-      t += 0.07;
-      setRingLevel(Math.abs(Math.sin(t)) * 0.6 + 0.15);
-      speakAnimRef.current = requestAnimationFrame(tick);
+      t += speed;
+      setRingLevel(Math.abs(Math.sin(t)) * amplitude + base);
+      ref.current = requestAnimationFrame(tick);
     };
-    speakAnimRef.current = requestAnimationFrame(tick);
+    ref.current = requestAnimationFrame(tick);
   };
 
-  // Drive visualizer from status changes
+  // Drive visualizer purely from status — NO getUserMedia needed
   useEffect(() => {
-    if (status === 'speaking') { stopVisualization(); startSpeakVisualization(); }
-    else if (status !== 'listening') {
-      if (speakAnimRef.current) { cancelAnimationFrame(speakAnimRef.current); speakAnimRef.current = null; }
-      if (status === 'idle') setRingLevel(0);
-    }
+    stopAllAnimations();
+    if      (status === 'speaking')    startAnimation(0.08, 0.60, 0.15, speakAnimRef);
+    else if (status === 'listening')   startAnimation(0.04, 0.35, 0.08, listenAnimRef);
+    else if (status === 'processing')  startAnimation(0.02, 0.15, 0.04, speakAnimRef);
+    // idle: rings stay at 0
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
@@ -356,10 +332,9 @@ export default function Home() {
       };
       recognitionRef.current.onerror = (e: any) => {
         if (e.error !== 'aborted') setStatusMessage(`Error: ${e.error}`);
-        setStatus('idle'); stopVisualization();
+        setStatus('idle');
       };
       recognitionRef.current.onend = () => {
-        stopVisualization();
         const final = pendingTranscriptRef.current;
         if (final?.trim()) { handleVoiceInput(final.trim()); pendingTranscriptRef.current = ''; }
         else { setStatus('idle'); setStatusMessage(''); }
@@ -535,9 +510,11 @@ export default function Home() {
   };
 
   // ── Mic toggle ───────────────────────────────────────────────────────────────
-  const toggleListening = async () => {
+  const toggleListening = () => {
     if (status === 'listening') {
-      recognitionRef.current?.stop(); clearSilenceTimer(); setStatusMessage('Processing...');
+      recognitionRef.current?.stop();
+      clearSilenceTimer();
+      setStatusMessage('Processing...');
     } else if (status === 'idle') {
       clearTranslationTimer(); setTranslation(null); clearSilenceTimer();
       if (!recognitionRef.current) { alert("Speech Recognition not supported. Use Safari on iOS."); return; }
@@ -548,7 +525,6 @@ export default function Home() {
         setStatus('listening');
         setStatusMessage(levelRef.current === 'Beginner' ? 'Listening (Continuous)...' : 'Listening...');
         startSilenceTimer();
-        await startListenVisualization();
       } catch (e) { console.error(e); setStatus('idle'); }
     }
   };
@@ -583,7 +559,7 @@ export default function Home() {
   // ── End session ──────────────────────────────────────────────────────────────
   const handleEndSession = async () => {
     try { recognitionRef.current?.stop(); } catch (_) {}
-    synthRef.current?.cancel(); stopVisualization(); setIsActive(false); setStatus('idle');
+    synthRef.current?.cancel(); stopAllAnimations(); setIsActive(false); setStatus('idle');
     const mins  = Math.round((Date.now() - sessionStartRef.current) / 60000);
     const turns = messagesRef.current.filter(m => m.role === 'user').length;
     saveProgress(turns, mins);
