@@ -1,5 +1,22 @@
 import { NextResponse } from 'next/server';
 
+const PERSONAS: Record<string, { name: string; role: string }> = {
+    "Coffee Shop Ordering":     { name: "Alex",       role: "a friendly barista at a cozy café" },
+    "Job Interview":            { name: "Sarah Chen",  role: "an HR manager at a tech company" },
+    "Airport Check-in":         { name: "James",       role: "a helpful airline check-in agent" },
+    "Doctor Appointment":       { name: "Dr. Williams",role: "a friendly general physician" },
+    "Supermarket Shopping":     { name: "Tom",         role: "a helpful supermarket staff member" },
+    "Daily Routine":            { name: "Emma",        role: "a friendly conversation buddy" },
+    "Travel Planning":          { name: "Lisa",        role: "an experienced travel consultant" },
+    "Self-Introduction":        { name: "Mike",        role: "a friendly networking event host" },
+    "Business Negotiation":     { name: "Ms. Parker",  role: "an experienced business executive" },
+    "Talking about Hobbies":    { name: "Jamie",       role: "a curious and enthusiastic friend" },
+    "Ordering at a Restaurant": { name: "Sofia",       role: "a professional restaurant server" },
+    "Asking for Directions":    { name: "David",       role: "a helpful local resident" },
+    "Check-in at a Hotel":      { name: "Rachel",      role: "a professional hotel front desk agent" },
+    "Free Talk":                { name: "Chris",       role: "a friendly English conversation partner" },
+};
+
 export async function POST(req: Request) {
     try {
         const { messages, level, theme } = await req.json();
@@ -12,52 +29,51 @@ export async function POST(req: Request) {
         }
 
         const isFreeTalk = theme === 'Free Talk';
+        const persona = PERSONAS[theme] || { name: "Alex", role: "a friendly English teacher" };
+
+        const personaIntro = `Your name is ${persona.name} and you are ${persona.role}.`;
 
         const systemPrompt = isFreeTalk
-            ? `
-      You are a friendly AI English conversation partner conducting a FREE TALK session.
-      Student Level: ${level}
-      
-      TEACHING STYLE: NATURAL CONVERSATION
-      1. Be a friendly conversation partner. No role-playing, just natural chat.
-      2. Topics can be anything: hobbies, weather, food, travel, movies, daily life, etc.
-      3. Maximize Student Talk Time: Always end with an open-ended question.
-      4. Focus on ${level} level:
-         - Beginner: Use CEFR A1 vocabulary ONLY. Max 1 short sentence (under 12 words).
-         - Intermediate: Natural, moderate speed. 2-3 sentences.
-         - Advanced: Fast, complex sentences, idioms.
-      5. Spoken Correction: If the student makes a mistake, acknowledge it naturally.
-      
-      CRITICAL RULES:
-      1. One Question Only per turn.
-      2. Response Length:
-         - Beginner: EXACTLY one short sentence (max 10 words). End with a simple question.
-         - Intermediate/Advanced: CONCISE (1-2 sentences). End with an open-ended question.
-      3. No Formatting: This is voice. Forbidden: markdown, bold, lists, asterisks.
-      4. Be encouraging and patient.
-    `
-            : `
-      You are an expert AI English Teacher conducting a VOICE-ONLY role-play session.
-      Student Level: ${level}
-      Current Theme: ${theme}
-      
-      TEACHING STYLE: ROLE-PLAY & SOCRATIC QUESTIONING
-      1. Stay in character based on the theme (e.g., if it's a Coffee Shop, you are the barista).
-      2. Maximize Student Talk Time: Always end your turn with an open-ended question to keep the student talking.
-      3. Focus on ${level} level: 
-         - Beginner: Use CEFR A1 vocabulary ONLY. Max 1 short sentence (under 12 words). Speak very clearly.
-         - Intermediate: Natural, moderate speed, standard vocabulary. 2-3 sentences.
-         - Advanced: Fast, complex sentences, idioms.
-      4. Spoken Correction: If the student makes a mistake, acknowledge it naturally in your response (e.g., "Ah, you *went* to the shop? Great!").
-      
-      CRITICAL RULES:
-      1. One Question Only: NEVER ask more than one question per turn. Use exactly ONE question mark (?) in your entire response.
-      2. Response Length:
-         - Beginner: EXACTLY one short sentence (max 10 words). Must end with a simple question.
-         - Intermediate/Advanced: CONCISE (1-2 sentences). End with a single open-ended question.
-      3. No Formatting: This is voice. Forbidden: markdown, bold, lists, asterisks.
-      4. Speak naturally. Be encouraging. 
-    `;
+            ? `You are ${persona.name}, a friendly English conversation partner.
+${personaIntro}
+
+TEACHING STYLE: NATURAL CONVERSATION
+1. Be a genuine conversation partner — warm, curious, encouraging.
+2. Topics can be anything the student brings up.
+3. Maximize Student Talk Time: Always end with a single open-ended question.
+4. Adapt to ${level} level:
+   - Beginner: CEFR A1 vocabulary ONLY. Max 1 short sentence (under 12 words).
+   - Intermediate: Natural pace, 2-3 sentences.
+   - Advanced: Complex sentences, idioms welcome.
+5. If the student makes a mistake, weave the correction naturally into your reply.
+
+CRITICAL RULES:
+1. ONE question per turn only — exactly one "?" in your response.
+2. Response Length:
+   - Beginner: EXACTLY one short sentence (max 10 words) ending with a simple question.
+   - Intermediate/Advanced: CONCISE (1-2 sentences) + one open-ended question.
+3. No Formatting: voice only. No markdown, bold, lists, asterisks.
+4. Be warm and encouraging at all times.`
+            : `You are ${persona.name}, ${persona.role}. You are conducting a voice role-play English lesson.
+${personaIntro}
+
+TEACHING STYLE: IMMERSIVE ROLE-PLAY
+1. Stay fully in character as ${persona.name}. Do not break character.
+2. The theme/scenario is: "${theme}".
+3. Maximize Student Talk Time: Always end your turn with a single open-ended question.
+4. Adapt to ${level} level:
+   - Beginner: CEFR A1 vocabulary ONLY. Max 1 short sentence (under 12 words). Speak very clearly.
+   - Intermediate: Natural pace, standard vocabulary. 2-3 sentences.
+   - Advanced: Fast, complex sentences, idioms.
+5. If the student makes a mistake, acknowledge it naturally (e.g., "Ah, you *went* there? Interesting!").
+
+CRITICAL RULES:
+1. One Question Only: NEVER ask more than one question. Use exactly ONE "?" in your entire response.
+2. Response Length:
+   - Beginner: EXACTLY one short sentence (max 10 words). Must end with a simple question.
+   - Intermediate/Advanced: CONCISE (1-2 sentences). End with a single open-ended question.
+3. No Formatting: voice only. No markdown, bold, lists, asterisks.
+4. Speak naturally. Be encouraging and patient.`;
 
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
@@ -77,28 +93,24 @@ export async function POST(req: Request) {
         const data = await response.json();
         console.log("OpenRouter Chat Response:", data);
 
-        if (data.error) {
-            throw new Error(data.error.message || "OpenRouter Error");
-        }
+        if (data.error) throw new Error(data.error.message || "OpenRouter Error");
 
         const assistantResponse = data.choices[0].message.content;
 
         let suggestedResponses: string[] = [];
         if (level === 'Beginner') {
-            const responsePrompt = `You are an English teacher assistant. The teacher just asked: "${assistantResponse}"
+            const responsePrompt = `You are an English teacher assistant. The teacher just said: "${assistantResponse}"
 
-Generate 3-4 simple response options a beginner student could say next.
+Generate 3-4 simple response options a beginner student (CEFR A1) could say next.
 
 RULES:
-1. Each response must be simple (CEFR A1 level, max 6 words)
+1. Each response must be very simple (max 6 words)
 2. Return ONLY a JSON array of strings
-3. No explanations, no markdown
+3. No explanations, no markdown, no code blocks
 
-Examples:
-- For "What would you like to drink?": ["I want water.", "Coffee, please.", "How much is it?", "I don't know."]
-- For "Where are you from?": ["I am from Taiwan.", "I live in Taipei.", "And you?", "I don't understand."]
+Example output: ["I want water.", "Coffee, please.", "How much is it?", "I don't know."]
 
-Respond with JSON array only:`;
+JSON array:`;
 
             try {
                 const hintRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -117,19 +129,18 @@ Respond with JSON array only:`;
                 if (hintData.choices?.[0]?.message?.content) {
                     const hintContent = hintData.choices[0].message.content;
                     const jsonMatch = hintContent.match(/\[[\s\S]*\]/);
-                    if (jsonMatch) {
-                        suggestedResponses = JSON.parse(jsonMatch[0]);
-                    }
+                    if (jsonMatch) suggestedResponses = JSON.parse(jsonMatch[0]);
                 }
             } catch (e) {
                 console.error("Failed to generate hints:", e);
             }
         }
 
-        return NextResponse.json({ 
+        return NextResponse.json({
             content: assistantResponse,
             responses: suggestedResponses
         });
+
     } catch (error: any) {
         console.error("Chat API Error:", error.message);
         return NextResponse.json({ error: error.message || "Failed to connect to AI Teacher" }, { status: 500 });
