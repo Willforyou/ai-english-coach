@@ -75,29 +75,32 @@ export function useGeminiLive({
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log("Gemini Live Connected");
-        setStatus('connected');
+        console.log("Gemini Live Connected, waiting 500ms before setup...");
         
-        // Send Setup Message
-        const setupMessage = {
-          setup: {
-            model: "models/gemini-2.0-flash-exp",
-            system_instruction: {
-              parts: [{ text: systemInstruction }]
-            },
-            generation_config: {
-              response_modalities: ["AUDIO"],
-              speech_config: {
-                voice_config: {
-                  prebuilt_voice_config: {
-                    voice_name: "Puck" // Options: Puck, Charon, Kore, Fenrir, Aoede
+        // Small delay to ensure stability
+        setTimeout(() => {
+          if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+          
+          setStatus('connected');
+          const setupMessage = {
+            setup: {
+              model: "models/gemini-2.0-flash-exp",
+              generation_config: {
+                response_modalities: ["audio"],
+                speech_config: {
+                  voice_config: {
+                    prebuilt_voice_config: {
+                      voice_name: "Puck"
+                    }
                   }
                 }
               }
             }
-          }
-        };
-        ws.send(JSON.stringify(setupMessage));
+          };
+          
+          console.log("Sending Setup Message:", setupMessage);
+          wsRef.current.send(JSON.stringify(setupMessage));
+        }, 500);
       };
 
       ws.onmessage = async (event) => {
