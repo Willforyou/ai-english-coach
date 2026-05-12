@@ -102,7 +102,14 @@ export function useGeminiLive({
 
       ws.onmessage = async (event) => {
         const data = JSON.parse(event.data);
+        console.log("Gemini Live Message:", data);
         
+        if (data.setupComplete) {
+          console.log("Setup Complete, starting recording...");
+          startRecording();
+          return;
+        }
+
         if (data.serverContent) {
           const { modelTurn, interrupted } = data.serverContent;
           
@@ -139,8 +146,7 @@ export function useGeminiLive({
         setStatus('idle');
       };
 
-      // Start Recording
-      startRecording();
+      // Recording will start on data.setupComplete in onmessage
 
     } catch (err: any) {
       console.error(err);
