@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
+import { useGeminiLive } from '@/hooks/useGeminiLive';
 
 declare global {
   interface Window {
@@ -245,17 +246,53 @@ export default function Home() {
   const listenAnimRef = useRef<number | null>(null);
   const speakAnimRef  = useRef<number | null>(null);
 
-  // Speech refs
-  const recognitionRef = useRef<any>(null);
-  const synthRef       = useRef<SpeechSynthesis | null>(null);
-  const sessionStartRef = useRef<number>(Date.now());
-
-  // Timer refs
-  const pendingTranscriptRef = useRef('');
-  const translationTimerRef  = useRef<NodeJS.Timeout | null>(null);
-  const captionTimerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
   const silenceTimerRef      = useRef<NodeJS.Timeout | null>(null);
   const speakTimeoutRef      = useRef<NodeJS.Timeout | null>(null);
+
+  // Gemini Live Hook
+  const getSystemInstruction = () => {
+    const isFreeTalk = theme === 'Free Talk';
+    const p = PERSONA_MAP[theme] || { name: "Alex", role: "a friendly English teacher" };
+    const personaIntro = `Your name is ${p.name} and you are ${p.role}.`;
+
+    return isFreeTalk
+      ? `You are ${p.name}, a friendly English conversation partner. ${personaIntro}
+TEACHING STYLE: NATURAL CONVERSATION. 
+1. Be warm, curious, encouraging. 
+2. Maximize Student Talk Time: Always end with a single open-ended question.
+3. Adapt to ${level} level:
+   - Beginner: Simple words, short sentences.
+   - Intermediate: Natural pace.
+   - Advanced: Complex topics.
+4. Response Length: VERY CONCISE (1-2 sentences) + one question.`
+      : `You are ${p.name}, ${p.role}. ${personaIntro}
+TEACHING STYLE: IMMERSIVE ROLE-PLAY. Scenario: "${theme}".
+1. Stay in character. 
+2. Maximize Student Talk Time: Always end with a single open-ended question.
+3. Adapt to ${level} level.
+4. Response Length: VERY CONCISE (1-2 sentences). End with exactly ONE question.`;
+  };
+
+  const gemini = useGeminiLive({
+    apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY || '',
+    systemInstruction: getSystemInstruction(),
+    onTextData: (text) => {
+      setMessages(p => {
+        const last = p[p.length - 1];
+        if (last?.role === 'assistant') {
+          return [...p.slice(0, -1), { ...last, content: last.content + text }];
+        }
+        return [...p, { role: 'assistant', content: text }];
+      });
+    },
+    onVolumeChange: (vol) => {
+      // Scale volume for rings (vol is roughly 0 to 0.5)
+      setRingLevel(vol * 2.5);
+    },
+    onInterrupted: () => {
+      // Optional: visual feedback for interruption
+    }
+  });
 
   // Stale-closure guards
   const messagesRef = useRef(messages);
@@ -299,15 +336,14 @@ export default function Home() {
     ref.current = requestAnimationFrame(tick);
   };
 
-  // Drive visualizer purely from status — NO getUserMedia needed
+  // Drive visualizer purely from gemini.status
   useEffect(() => {
     stopAllAnimations();
-    if      (status === 'speaking')    startAnimation(0.08, 0.60, 0.15, speakAnimRef);
-    else if (status === 'listening')   startAnimation(0.04, 0.35, 0.08, listenAnimRef);
-    else if (status === 'processing')  startAnimation(0.02, 0.15, 0.04, speakAnimRef);
-    // idle: rings stay at 0
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+    if (gemini.status === 'connecting') {
+      startAnimation(0.02, 0.15, 0.04, speakAnimRef);
+    }
+    // Idle/Connected states are handled by onVolumeChange or stay at base
+  }, [gemini.status]);
 
   // ── Init ────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -316,31 +352,6 @@ export default function Home() {
       const saved = localStorage.getItem('ai-coach-progress');
       if (saved) setProgress(JSON.parse(saved));
     } catch (_) {}
-
-    if (typeof window === 'undefined') return;
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SR) {
-      recognitionRef.current = new SR();
-      recognitionRef.current.continuous    = false;
-      recognitionRef.current.interimResults = true;
-      recognitionRef.current.lang           = 'en-US';
-
-      recognitionRef.current.onresult = (e: any) => {
-        let txt = '';
-        for (let i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript;
-        setTranscript(txt); pendingTranscriptRef.current = txt;
-      };
-      recognitionRef.current.onerror = (e: any) => {
-        if (e.error !== 'aborted') setStatusMessage(`Error: ${e.error}`);
-        setStatus('idle');
-      };
-      recognitionRef.current.onend = () => {
-        const final = pendingTranscriptRef.current;
-        if (final?.trim()) { handleVoiceInput(final.trim()); pendingTranscriptRef.current = ''; }
-        else { setStatus('idle'); setStatusMessage(''); }
-      };
-    }
-    synthRef.current = window.speechSynthesis;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -385,121 +396,12 @@ export default function Home() {
     });
   };
 
-  // ── Helpers ─────────────────────────────────────────────────────────────────
-  const clearTranslationTimer = () => {
-    if (translationTimerRef.current) { clearTimeout(translationTimerRef.current); translationTimerRef.current = null; }
-  };
-  const clearSilenceTimer = () => {
-    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
-    setShowResponseHints(false);
-  };
-  const startSilenceTimer = () => {
-    clearSilenceTimer();
-    if (levelRef.current !== 'Beginner') return;
-    silenceTimerRef.current = setTimeout(() => setShowResponseHints(true), 8000);
-  };
-  const startTranslationTimer = (text: string) => {
-    clearTranslationTimer();
-    if (levelRef.current !== 'Beginner') return;
-    translationTimerRef.current = setTimeout(async () => {
-      setIsTranslating(true);
-      try {
-        const r = await fetch('/api/translate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
-        const d = await r.json();
-        if (d.translation) { setTranslation(d.translation); speak(d.translation, 'zh-TW'); }
-      } catch (_) {} finally { setIsTranslating(false); }
-    }, 10000);
-  };
-  const defaultHints = () => ["Yes, I understand.", "No, I don't understand.", "Can you repeat that?", "Please speak slower."];
-
-  // ── TTS ─────────────────────────────────────────────────────────────────────
-  const speak = (text: string, lang = 'en-US', rate?: number) => {
-    if (!synthRef.current || !text?.trim()) { setStatus('idle'); return; }
-    if (speakTimeoutRef.current) { clearTimeout(speakTimeoutRef.current); speakTimeoutRef.current = null; }
-    if (statusRef.current === 'listening') recognitionRef.current?.stop();
-    if (captionTimerRef.current) { clearInterval(captionTimerRef.current); captionTimerRef.current = null; }
-    synthRef.current.cancel();
-
-    const utt = new SpeechSynthesisUtterance(text);
-    utt.lang = lang;
-    utt.rate = rate !== undefined ? rate
-      : lang === 'en-US' ? (levelRef.current === 'Beginner' ? 0.8 : levelRef.current === 'Intermediate' ? 1.0 : 1.1)
-      : 1.0;
-
-    if (lang === 'en-US') {
-      setCurrentCaption('');
-      let idx = 0;
-      const spd = levelRef.current === 'Beginner' ? 120 : 80;
-      captionTimerRef.current = setInterval(() => {
-        if (idx < text.length) { setCurrentCaption(text.slice(0, ++idx)); }
-        else { clearInterval(captionTimerRef.current!); captionTimerRef.current = null; }
-      }, spd);
-    }
-
-    speakTimeoutRef.current = setTimeout(() => {
-      setStatus('idle');
-      if (captionTimerRef.current) { clearInterval(captionTimerRef.current); captionTimerRef.current = null; }
-    }, Math.max(text.length * 150, 5000));
-
-    utt.onend = () => {
-      if (speakTimeoutRef.current) { clearTimeout(speakTimeoutRef.current); speakTimeoutRef.current = null; }
-      setStatus('idle'); setCurrentCaption(text);
-      if (captionTimerRef.current) { clearInterval(captionTimerRef.current); captionTimerRef.current = null; }
-      if (lang === 'en-US' && levelRef.current === 'Beginner') {
-        startTranslationTimer(text);
-        setResponseHints(materials?.responses ?? defaultHints());
-      }
-    };
-    utt.onerror = () => {
-      if (speakTimeoutRef.current) { clearTimeout(speakTimeoutRef.current); speakTimeoutRef.current = null; }
-      setStatus('idle');
-      if (captionTimerRef.current) { clearInterval(captionTimerRef.current); captionTimerRef.current = null; }
-    };
-
-    setStatus('speaking');
-    synthRef.current.speak(utt);
-  };
-
-  // ── Voice input ──────────────────────────────────────────────────────────────
-  const handleVoiceInput = async (text: string) => {
-    if (!text.trim()) { setStatus('idle'); return; }
-    clearTranslationTimer(); setTranslation(null);
-    const userMsg: Message = { role: 'user', content: text };
-    setMessages(p => [...p, userMsg]); setTranscript(''); setStatus('processing');
-    setStatusMessage('Talking to AI Teacher...');
-    try {
-      const res  = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [...messagesRef.current, userMsg], level: levelRef.current, theme: themeRef.current }) });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      const content = data.content ?? '';
-      setStatusMessage('AI is responding...');
-      setMessages(p => [...p, { role: 'assistant', content }]);
-      if (data.responses?.length > 0) {
-        setResponseHints(data.responses);
-        if (materials) setMaterials({ ...materials, responses: data.responses });
-      }
-      speak(content);
-    } catch (err: any) {
-      console.error(err); setStatusMessage(`Error: ${err.message}`);
-      speak("I'm sorry, I encountered an error. Please try again.");
-    }
-  };
-
-  const handleHelpPhrase = async (phrase: { text: string }) => {
-    setShowHelp(false); clearTranslationTimer(); setTranslation(null);
-    const userMsg: Message = { role: 'user', content: phrase.text };
-    setMessages(p => [...p, userMsg]); speak(phrase.text);
-    try {
-      const res  = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [...messagesRef.current, userMsg], level: levelRef.current, theme: themeRef.current }) });
-      const data = await res.json();
-      if (data.content) {
-        setMessages(p => [...p, { role: 'assistant', content: data.content }]);
-        if (data.responses?.length > 0) { setResponseHints(data.responses); if (materials) setMaterials({ ...materials, responses: data.responses }); }
-        setTimeout(() => speak(data.content), 500);
-      }
-    } catch (err) { console.error(err); }
+  const handleHelpPhrase = (phrase: { text: string }) => {
+    // For now, we can just send the text to Gemini Live via its data channel or just speak it
+    // Gemini Live doesn't have a simple "send text" yet in all versions, 
+    // but we can just tell the user to say it.
+    // Or we could implement a text input.
+    setShowHelp(false);
   };
 
   const handleResponseHint = (hint: string) => { clearSilenceTimer(); setShowResponseHints(false); handleVoiceInput(hint); };
@@ -511,31 +413,17 @@ export default function Home() {
 
   // ── Mic toggle ───────────────────────────────────────────────────────────────
   const toggleListening = () => {
-    if (status === 'listening') {
-      recognitionRef.current?.stop();
-      clearSilenceTimer();
-      setStatusMessage('Processing...');
-    } else if (status === 'idle') {
-      clearTranslationTimer(); setTranslation(null); clearSilenceTimer();
-      if (!recognitionRef.current) { alert("Speech Recognition not supported. Use Safari on iOS."); return; }
-      recognitionRef.current.continuous = levelRef.current === 'Beginner';
-      setTranscript(''); pendingTranscriptRef.current = '';
-      try {
-        recognitionRef.current.start();
-        setStatus('listening');
-        setStatusMessage(levelRef.current === 'Beginner' ? 'Listening (Continuous)...' : 'Listening...');
-        startSilenceTimer();
-      } catch (e) { console.error(e); setStatus('idle'); }
+    if (gemini.status === 'connected') {
+      gemini.disconnect();
+    } else {
+      gemini.connect();
     }
   };
 
   // ── Start lesson ─────────────────────────────────────────────────────────────
   const startLesson = (selectedLevel: 'Beginner' | 'Intermediate' | 'Advanced', selectedTheme: string, freeTalk = false) => {
-    // Audio unlock
-    if (synthRef.current) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; synthRef.current.speak(u); }
-
     setLevel(selectedLevel); setTheme(selectedTheme); setIsFreeTalk(freeTalk);
-    setIsActive(true); setStatus('processing'); setTranslation(null); clearTranslationTimer();
+    setIsActive(true); setTranslation(null); clearTranslationTimer();
     sessionStartRef.current = Date.now(); setStep('session');
 
     if (!freeTalk) {
@@ -543,23 +431,15 @@ export default function Home() {
         body: JSON.stringify({ level: selectedLevel, theme: selectedTheme }) })
         .then(r => r.json()).then(d => setMaterials(d)).catch(console.error);
     }
-
-    const p = PERSONA_MAP[selectedTheme] ?? { name: 'Alex', emoji: '👨‍🏫' };
-    const welcome = freeTalk
-      ? `Hello! I'm Chris, your conversation partner. What would you like to talk about today?`
-      : selectedLevel === 'Beginner'
-        ? `Hello! I'm ${p.name}. Today we talk about ${selectedTheme}. Are you ready?`
-        : `Hello! I'm ${p.name}. We're practicing "${selectedTheme}" today. Ready to begin?`;
-
-    setMessages([{ role: 'assistant', content: welcome }]);
-    const r = selectedLevel === 'Beginner' ? 0.8 : selectedLevel === 'Intermediate' ? 1.0 : 1.1;
-    speak(welcome, 'en-US', r);
+    
+    // Connect to Gemini Live
+    gemini.connect();
   };
 
   // ── End session ──────────────────────────────────────────────────────────────
   const handleEndSession = async () => {
-    try { recognitionRef.current?.stop(); } catch (_) {}
-    synthRef.current?.cancel(); stopAllAnimations(); setIsActive(false); setStatus('idle');
+    gemini.disconnect();
+    stopAllAnimations(); setIsActive(false); setStatus('idle');
     const mins  = Math.round((Date.now() - sessionStartRef.current) / 60000);
     const turns = messagesRef.current.filter(m => m.role === 'user').length;
     saveProgress(turns, mins);
@@ -734,7 +614,7 @@ export default function Home() {
                 style={{ width: `${64 + i * 36}px`, height: `${64 + i * 36}px`, opacity: 0.08, transition: 'opacity 0.3s ease' }}
               />
             ))}
-            <div className={`w-32 h-32 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-500 flex flex-col items-center justify-center shadow-2xl shadow-indigo-500/30 z-10 transition-transform duration-150 ${status === 'speaking' ? 'scale-110' : ''}`}>
+            <div className={`w-32 h-32 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-500 flex flex-col items-center justify-center shadow-2xl shadow-indigo-500/30 z-10 transition-transform duration-150 ${gemini.isSpeaking ? 'scale-110' : ''}`}>
               <span className="text-4xl">{persona.emoji}</span>
               <span className="text-[9px] text-indigo-200 mt-1 font-medium tracking-wide">{persona.name}</span>
             </div>
@@ -746,14 +626,13 @@ export default function Home() {
 
             <div className="bg-slate-900/60 rounded-2xl p-5 min-h-[6rem] flex items-center justify-center border border-slate-800 shadow-inner relative group">
               <p className="text-slate-200 text-lg leading-relaxed font-medium text-center">
-                {status === 'processing' ? (
+                {gemini.status === 'connecting' ? (
                   <span className="flex gap-1 justify-center">
                     {[0,1,2].map(i => <span key={i} className="animate-bounce" style={{ animationDelay: `${i*0.2}s` }}>.</span>)}
                   </span>
-                ) : status === 'speaking' ? (currentCaption || messages.at(-1)?.content)
-                  : status === 'listening' ? (transcript || 'Listening...')
-                  : messages.at(-1)?.role === 'assistant' ? messages.at(-1)!.content
-                  : 'Tap the mic to speak'}
+                ) : gemini.isSpeaking ? (messages.at(-1)?.content)
+                  : gemini.status === 'connected' ? ('Listening...')
+                  : 'Tap the mic to start'}
               </p>
 
               {/* Replay buttons */}
@@ -791,7 +670,8 @@ export default function Home() {
               </div>
             )}
 
-            {statusMessage && <p className="text-indigo-500/60 text-xs font-mono animate-pulse">{statusMessage}</p>}
+            {gemini.error && <p className="text-red-500 text-xs font-mono">{gemini.error}</p>}
+            {gemini.status === 'connecting' && <p className="text-indigo-500/60 text-xs font-mono animate-pulse">Connecting to Gemini Live...</p>}
           </div>
 
           {/* ─ Materials ─ */}
@@ -856,17 +736,17 @@ export default function Home() {
             <div className="flex items-center gap-5">
               {/* Help */}
               <button onClick={() => setShowHelp(p => !p)}
-                disabled={status === 'processing' || status === 'speaking'}
+                disabled={gemini.status === 'connecting'}
                 className={`w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-lg text-xl font-bold disabled:opacity-40 ${showHelp ? 'bg-amber-500 shadow-amber-500/30' : 'bg-slate-800 hover:bg-slate-700'}`}
                 title="Help phrases">?</button>
 
               {/* Mic */}
               <button onClick={toggleListening}
-                disabled={status === 'processing' || status === 'speaking'}
+                disabled={gemini.status === 'connecting'}
                 className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-xl disabled:opacity-40 ${
-                  status === 'listening' ? 'bg-red-500 hover:bg-red-600 scale-110 shadow-red-500/40' : 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/40'
+                  gemini.status === 'connected' ? 'bg-red-500 hover:bg-red-600 scale-110 shadow-red-500/40' : 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/40'
                 }`}>
-                {status === 'listening' ? (
+                {gemini.status === 'connected' ? (
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H10a1 1 0 01-1-1v-4z" />
@@ -885,7 +765,7 @@ export default function Home() {
             </button>
 
             <p className="text-[10px] text-slate-600 uppercase tracking-widest">
-              {status === 'listening' ? 'Release your thoughts...' : 'Press to start speaking'}
+              {gemini.status === 'connected' ? 'Speak naturally...' : 'Tap the mic to talk'}
             </p>
           </div>
         </div>
