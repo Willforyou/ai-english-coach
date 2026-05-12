@@ -246,14 +246,17 @@ export default function Home() {
   const listenAnimRef = useRef<number | null>(null);
   const speakAnimRef  = useRef<number | null>(null);
 
+  const sessionStartRef = useRef<number>(Date.now());
   const silenceTimerRef      = useRef<NodeJS.Timeout | null>(null);
   const speakTimeoutRef      = useRef<NodeJS.Timeout | null>(null);
 
   // Gemini Live Hook
   const getSystemInstruction = () => {
     const isFreeTalk = theme === 'Free Talk';
-    const p = PERSONA_MAP[theme] || { name: "Alex", role: "a friendly English teacher" };
-    const personaIntro = `Your name is ${p.name} and you are ${p.role}.`;
+    const p = PERSONA_MAP[theme] || { name: "Alex", emoji: "👨‍🏫" };
+    // Provide a simple role based on the theme
+    const role = theme === 'Free Talk' ? "a friendly English teacher" : `a professional in the field of ${theme}`;
+    const personaIntro = `Your name is ${p.name} and you are ${role}.`;
 
     return isFreeTalk
       ? `You are ${p.name}, a friendly English conversation partner. ${personaIntro}
@@ -265,7 +268,7 @@ TEACHING STYLE: NATURAL CONVERSATION.
    - Intermediate: Natural pace.
    - Advanced: Complex topics.
 4. Response Length: VERY CONCISE (1-2 sentences) + one question.`
-      : `You are ${p.name}, ${p.role}. ${personaIntro}
+      : `You are ${p.name}, ${role}. ${personaIntro}
 TEACHING STYLE: IMMERSIVE ROLE-PLAY. Scenario: "${theme}".
 1. Stay in character. 
 2. Maximize Student Talk Time: Always end with a single open-ended question.
@@ -358,7 +361,7 @@ TEACHING STYLE: IMMERSIVE ROLE-PLAY. Scenario: "${theme}".
   // ── Timer ───────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isActive || timeLeft <= 0) {
-      if (timeLeft === 0) { setIsActive(false); speak("Time is up! You did a fantastic job today."); }
+      if (timeLeft === 0) { setIsActive(false); handleEndSession(); }
       return;
     }
     const id = setInterval(() => setTimeLeft(p => p - 1), 1000);
@@ -404,11 +407,9 @@ TEACHING STYLE: IMMERSIVE ROLE-PLAY. Scenario: "${theme}".
     setShowHelp(false);
   };
 
-  const handleResponseHint = (hint: string) => { clearSilenceTimer(); setShowResponseHints(false); handleVoiceInput(hint); };
-
-  const replayLast = (slow = false) => {
-    const last = [...messages].reverse().find(m => m.role === 'assistant');
-    if (last) speak(last.content, 'en-US', slow ? 0.6 : undefined);
+  const handleResponseHint = (hint: string) => { 
+    // Gemini Live handles input directly, but we could support text hints here if needed
+    setShowResponseHints(false); 
   };
 
   // ── Mic toggle ───────────────────────────────────────────────────────────────
@@ -423,7 +424,7 @@ TEACHING STYLE: IMMERSIVE ROLE-PLAY. Scenario: "${theme}".
   // ── Start lesson ─────────────────────────────────────────────────────────────
   const startLesson = (selectedLevel: 'Beginner' | 'Intermediate' | 'Advanced', selectedTheme: string, freeTalk = false) => {
     setLevel(selectedLevel); setTheme(selectedTheme); setIsFreeTalk(freeTalk);
-    setIsActive(true); setTranslation(null); clearTranslationTimer();
+    setIsActive(true); setTranslation(null);
     sessionStartRef.current = Date.now(); setStep('session');
 
     if (!freeTalk) {
@@ -635,23 +636,7 @@ TEACHING STYLE: IMMERSIVE ROLE-PLAY. Scenario: "${theme}".
                   : 'Tap the mic to start'}
               </p>
 
-              {/* Replay buttons */}
-              {status === 'idle' && messages.some(m => m.role === 'assistant') && (
-                <div className="absolute -right-2 -top-2 flex gap-1">
-                  <button onClick={() => replayLast(false)} title="Replay"
-                    className="bg-indigo-600 hover:bg-indigo-500 p-2 rounded-full shadow-lg transition-all hover:scale-110 active:scale-95">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                    </svg>
-                  </button>
-                  <button onClick={() => replayLast(true)} title="Slow replay"
-                    className="bg-amber-600 hover:bg-amber-500 p-2 rounded-full shadow-lg transition-all hover:scale-110 active:scale-95">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 000 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
-                    </svg>
-                  </button>
-                </div>
-              )}
+              {/* Replay buttons removed for Live version */}
             </div>
 
             {/* Translation — inline block, pushes content below it down */}
